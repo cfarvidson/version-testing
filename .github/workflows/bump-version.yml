@@ -1,8 +1,12 @@
 name: Version Bump
 
 on:
-  release:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to bump to (e.g. 1.0.0)"
+        required: true
+        type: string
 
 jobs:
   bump-version:
@@ -21,29 +25,23 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Extract version from release
-        id: get_version
+      - name: Bump version in package.json
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          npm version ${{ inputs.version }} --no-git-tag-version
 
-      - name: Bump version
-        run: |
-          npm version ${{ steps.get_version.outputs.version }} --no-git-tag-commit
-
-      - name: Push changes
+      - name: Commit and push changes
         id: push_changes
         run: |
           git add package.json
-          git commit -m "Bump version to ${{ steps.get_version.outputs.version }}"
+          git commit -m "Bump version to ${{ inputs.version }}"
           git push
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Update Release
-        run: |
-          gh api \
-            --method PATCH \
-            /repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
-            -f target_commitish='${{ steps.push_changes.outputs.commit_sha }}'
+      - name: Create Release and Tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v${{ inputs.version }} \
+            --target ${{ steps.push_changes.outputs.commit_sha }} \
+            --title "v${{ inputs.version }}" \
+            --generate-notes
