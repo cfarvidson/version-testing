@@ -3,10 +3,14 @@ name: Version Bump
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to bump to (e.g. 1.0.0)"
+      version_type:
+        description: "Version increment type"
         required: true
-        type: string
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   bump-version:
@@ -26,14 +30,19 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       - name: Bump version in package.json
+        id: bump_version
         run: |
-          npm version ${{ inputs.version }} --no-git-tag-version
+          # Get the new version number
+          NEW_VERSION=$(npm version ${{ inputs.version_type }} --no-git-tag-version)
+          # Remove the 'v' prefix for later use
+          CLEAN_VERSION=${NEW_VERSION#v}
+          echo "new_version=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Commit and push changes
         id: push_changes
         run: |
           git add package.json
-          git commit -m "Bump version to ${{ inputs.version }}"
+          git commit -m "Bump version to ${{ steps.bump_version.outputs.new_version }}"
           git push
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
@@ -41,7 +50,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v${{ inputs.version }} \
+          gh release create v${{ steps.bump_version.outputs.new_version }} \
             --target ${{ steps.push_changes.outputs.commit_sha }} \
-            --title "v${{ inputs.version }}" \
+            --title "v${{ steps.bump_version.outputs.new_version }}" \
             --generate-notes
