@@ -46,6 +46,27 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
+      - name: Generate Release Notes
+        id: release_notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Generate release notes and save to a file
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/releases/generate-notes \
+            -f tag_name="v${{ needs.calculate-version.outputs.new_version }}" \
+            -f target_commitish="${{ github.ref }}" \
+            --jq '.body' > release_notes.txt
+
+          # Save the release notes as a multiline output
+          {
+            echo 'NOTES<<EOF'
+            cat release_notes.txt
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
       - name: Bump version in package.json
         run: |
           npm version ${{ inputs.version_type }} --no-git-tag-version
@@ -54,7 +75,7 @@ jobs:
         id: push_changes
         run: |
           git add package.json
-          git commit -m "Bump version to ${{ needs.calculate-version.outputs.new_version }}"
+          git commit -m "Bump version to v${{ needs.calculate-version.outputs.new_version }}" -m "${{ steps.release_notes.outputs.NOTES }}"
           git push
           echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
@@ -65,4 +86,4 @@ jobs:
           gh release create v${{ needs.calculate-version.outputs.new_version }} \
             --target ${{ steps.push_changes.outputs.commit_sha }} \
             --title "v${{ needs.calculate-version.outputs.new_version }}" \
-            --generate-notes
+            --notes-file release_notes.txt
