@@ -1,0 +1,49 @@
+name: Version Bump
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Extract version from release
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        run: |
+          npm version ${{ steps.get_version.outputs.version }} --no-git-tag-commit
+
+      - name: Push changes
+        id: push_changes
+        run: |
+          git add package.json
+          git commit -m "Bump version to ${{ steps.get_version.outputs.version }}"
+          git push
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Update Release
+        run: |
+          gh api \
+            --method PATCH \
+            /repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+            -f target_commitish='${{ steps.push_changes.outputs.commit_sha }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
